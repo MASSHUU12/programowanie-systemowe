@@ -1,4 +1,4 @@
-#include "usergroups.h"
+#include <dlfcn.h>
 #include <pwd.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -6,14 +6,11 @@
 #include <sys/types.h>
 #include <unistd.h>
 #include <utmpx.h>
-#include <dlfcn.h>
 
-typedef char* (*get_user_groups_func)(uid_t);
+typedef char *(*get_user_groups_func)(uid_t);
 
 int main(int argc, char *argv[]) {
-  int opt;
-  int show_host = 0;
-  int show_groups = 0;
+  int opt, show_host = 0, show_groups = 0;
   void *lib_handle = NULL;
   get_user_groups_func get_groups_ptr = NULL;
 
@@ -31,16 +28,18 @@ int main(int argc, char *argv[]) {
     }
   }
 
-  // Try to load the shared library if -g option is specified
   if (show_groups) {
     lib_handle = dlopen("./libusergroups.so", RTLD_LAZY);
     if (!lib_handle) {
       fprintf(stderr, "Error: Could not load library: %s\n", dlerror());
       show_groups = 0;
     } else {
-      get_groups_ptr = (get_user_groups_func)dlsym(lib_handle, "get_user_groups");
+      get_groups_ptr =
+          (get_user_groups_func)dlsym(lib_handle, "get_user_groups");
       if (!get_groups_ptr) {
-        fprintf(stderr, "Error: Could not find function 'get_user_groups': %s\n", dlerror());
+        fprintf(stderr,
+                "Error: Could not find function 'get_user_groups': %s\n",
+                dlerror());
         dlclose(lib_handle);
         show_groups = 0;
       }
@@ -48,8 +47,7 @@ int main(int argc, char *argv[]) {
   }
 
   struct utmpx *u = getutxent();
-
-  while (u != NULL) {
+  while ((u = getutxent()) != NULL) {
     if (u->ut_type != USER_PROCESS) {
       u = getutxent();
       continue;
@@ -76,7 +74,6 @@ int main(int argc, char *argv[]) {
     }
 
     printf("\n");
-    u = getutxent();
   }
 
   endutxent();

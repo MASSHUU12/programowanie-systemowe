@@ -8,9 +8,7 @@
 #include <utmpx.h>
 
 int main(int argc, char *argv[]) {
-  int opt;
-  int show_host = 0;
-  int show_groups = 0;
+  int opt, show_host = 0, show_groups = 0;
 
   while ((opt = getopt(argc, argv, "hg")) != -1) {
     switch (opt) {
@@ -26,9 +24,8 @@ int main(int argc, char *argv[]) {
     }
   }
 
-  struct utmpx *u = getutxent();
-
-  while (u != NULL) {
+  struct utmpx *u;
+  while ((u = getutxent()) != NULL) {
     if (u->ut_type != USER_PROCESS) {
       u = getutxent();
       continue;
@@ -40,15 +37,12 @@ int main(int argc, char *argv[]) {
       continue;
     }
 
-    // Print user login
     printf("%s", p->pw_name);
 
-    // If -h option, print host
     if (show_host && strlen(u->ut_host) > 0) {
       printf("(%s)", u->ut_host);
     }
 
-    // If -g option, print groups
     if (show_groups) {
       char *groups = get_user_groups(p->pw_uid);
       if (groups != NULL) {
@@ -58,7 +52,6 @@ int main(int argc, char *argv[]) {
     }
 
     printf("\n");
-    u = getutxent();
   }
 
   endutxent();

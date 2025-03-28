@@ -3,6 +3,6 @@
 
 #include <sys/types.h>
 
-char* get_user_groups(uid_t uid);
+char* get_user_groups(const uid_t uid);
 
 #endif // USERGROUPS_H
