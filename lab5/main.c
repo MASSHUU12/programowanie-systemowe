@@ -24,20 +24,15 @@ void sigchld_handler(int sig, siginfo_t *info, void *context) {
   int status;
   pid_t pid;
 
-  // Using waitpid here to get the status, but not to wait for the child
-  pid = waitpid(-1, &status, WNOHANG);
-  if (pid <= 0)
-    return;
-
-  int exit_code = 0;
-  if (WIFEXITED(status)) {
-    exit_code = WEXITSTATUS(status);
+  while ((pid = waitpid(-1, &status, WNOHANG)) > 0) {
+    int exit_code = 0;
+    if (WIFEXITED(status)) {
+      exit_code = WEXITSTATUS(status);
+    }
+    printf("Child terminated: [ PID: %d ] [ Exit code: %d ] [ %s ]\n", pid,
+           exit_code, get_current_time_str());
+    child_count--;
   }
-
-  printf("Child terminated: [ PID: %d ] [ Exit code: %d ] [ %s ]\n", pid,
-         exit_code, get_current_time_str());
-
-  child_count--;
 }
 
 void sigalrm_handler(int sig) {
@@ -53,7 +48,31 @@ int32_t random_number(int32_t min_num, int32_t max_num) {
   return (rand() % (max_num - min_num + 1)) + min_num;
 }
 
-int main(int argc, char *argv[]) {
+void setup_signal_handler(int signum, void (*handler)(int), int flags) {
+  struct sigaction sa;
+  memset(&sa, 0, sizeof(sa));
+  sa.sa_handler = handler;
+  sa.sa_flags = flags;
+  sigemptyset(&sa.sa_mask);
+  if (sigaction(signum, &sa, NULL) == -1) {
+    perror("sigaction");
+    exit(EXIT_FAILURE);
+  }
+}
+
+void setup_sigchld_handler() {
+  struct sigaction sa_chld;
+  memset(&sa_chld, 0, sizeof(sa_chld));
+  sa_chld.sa_sigaction = sigchld_handler;
+  sa_chld.sa_flags = SA_SIGINFO | SA_RESTART;
+  sigemptyset(&sa_chld.sa_mask);
+  if (sigaction(SIGCHLD, &sa_chld, NULL) == -1) {
+    perror("sigaction(SIGCHLD)");
+    exit(EXIT_FAILURE);
+  }
+}
+
+int main(int argc, char **argv) {
   int opt, max_lifetime, wait_interval;
 
   srand(time(NULL));
@@ -91,27 +110,8 @@ int main(int argc, char *argv[]) {
     }
   }
 
-  // Set up SIGCHLD handler
-  struct sigaction sa_chld;
-  memset(&sa_chld, 0, sizeof(sa_chld));
-  sa_chld.sa_sigaction = sigchld_handler;
-  sa_chld.sa_flags = SA_SIGINFO | SA_RESTART;
-  sigemptyset(&sa_chld.sa_mask);
-  if (sigaction(SIGCHLD, &sa_chld, NULL) == -1) {
-    perror("sigaction(SIGCHLD)");
-    return EXIT_FAILURE;
-  }
-
-  // Set up SIGINT handler
-  struct sigaction sa_int;
-  memset(&sa_int, 0, sizeof(sa_int));
-  sa_int.sa_handler = sigint_handler;
-  sa_int.sa_flags = SA_RESTART;
-  sigemptyset(&sa_int.sa_mask);
-  if (sigaction(SIGINT, &sa_int, NULL) == -1) {
-    perror("sigaction(SIGINT)");
-    return EXIT_FAILURE;
-  }
+  setup_sigchld_handler();
+  setup_signal_handler(SIGINT, sigint_handler, SA_RESTART);
 
   printf("Main process started with PID: %d\n", getpid());
   printf("Press Ctrl+C to stop creating new children and wait for existing "
@@ -127,22 +127,8 @@ int main(int argc, char *argv[]) {
     if (pid == 0) {
       srand(time(NULL) ^ getpid());
 
-      struct sigaction sa_ignore = {0};
-      sa_ignore.sa_handler = SIG_IGN;
-      if (sigaction(SIGINT, &sa_ignore, NULL) == -1) {
-        perror("sigaction(SIGINT) in child");
-        _exit(EXIT_FAILURE);
-      }
-
-      struct sigaction sa_alrm = {0};
-      memset(&sa_alrm, 0, sizeof(sa_alrm));
-      sa_alrm.sa_handler = sigalrm_handler;
-      sa_alrm.sa_flags = SA_RESTART;
-      sigemptyset(&sa_alrm.sa_mask);
-      if (sigaction(SIGALRM, &sa_alrm, NULL) == -1) {
-        perror("sigaction(SIGALRM)");
-        _exit(EXIT_FAILURE);
-      }
+      setup_signal_handler(SIGINT, SIG_IGN, 0);
+      setup_signal_handler(SIGALRM, sigalrm_handler, SA_RESTART);
 
       const int duration = random_number(1, max_lifetime);
 
@@ -150,28 +136,21 @@ int main(int argc, char *argv[]) {
              get_current_time_str());
       fflush(stdout);
 
-      if (alarm(duration) < 0) {
-        perror("alarm");
-        _exit(EXIT_FAILURE);
-      }
+      alarm(duration);
 
-      // Do some calculations
       unsigned long long factorial = 1;
       unsigned int i = 1;
       while (1) {
         factorial *= i;
         i++;
-        // Reset when it gets too large to avoid overflow
         if (i > 20) {
           factorial = 1;
           i = 1;
         }
       }
 
-      // Should never reach here because SIGALRM will terminate
       _exit(duration);
     } else {
-      // Parent process
       child_count++;
       sleep(wait_interval);
     }
