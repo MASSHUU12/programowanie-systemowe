@@ -9,12 +9,10 @@
 
 double timespec_diff_sec(const struct timespec *start,
                          const struct timespec *end) {
-  double diff = (end->tv_sec - start->tv_sec);
-  diff += (end->tv_nsec - start->tv_nsec) / 1e9;
-  return diff;
+  return (end->tv_sec - start->tv_sec) + (end->tv_nsec - start->tv_nsec) / 1e9;
 }
 
-int redirect_to_dev_null(int fd) {
+int redirect_to_dev_null(const int fd) {
   int dev_null = open("/dev/null", O_WRONLY);
   if (dev_null == -1) {
     perror("open /dev/null");
@@ -40,7 +38,6 @@ int run_command(char **argv, const int verbose, double *real_time,
                 double *user_time, double *sys_time) {
   struct timespec start, end;
   struct rusage usage;
-  int status;
 
   if (clock_gettime(CLOCK_MONOTONIC, &start) == -1) {
     perror("clock_gettime");
@@ -55,23 +52,17 @@ int run_command(char **argv, const int verbose, double *real_time,
 
   if (pid == 0) {
     if (!verbose) {
-      close(1);
-      if (redirect_to_dev_null(1) == -1) {
-        exit(EXIT_FAILURE);
-      }
-
-      close(2);
-      if (redirect_to_dev_null(2) == -1) {
+      if (redirect_to_dev_null(STDOUT_FILENO) == -1 ||
+          redirect_to_dev_null(STDERR_FILENO) == -1) {
         exit(EXIT_FAILURE);
       }
     }
-
     execvp(argv[0], argv);
     perror("execvp");
     exit(EXIT_FAILURE);
   }
 
-  if (wait4(pid, &status, 0, &usage) == -1) {
+  if (wait4(pid, NULL, 0, &usage) == -1) {
     perror("wait4");
     return -1;
   }
@@ -88,7 +79,7 @@ int run_command(char **argv, const int verbose, double *real_time,
   return 0;
 }
 
-int main(int argc, char *argv[]) {
+int main(int argc, char **argv) {
   int opt, verbose = 0, count = 1;
 
   while ((opt = getopt(argc, argv, "vc:")) != -1) {
@@ -103,9 +94,6 @@ int main(int argc, char *argv[]) {
           fprintf(stderr, "Error: -c must be a positive integer.\n");
           return EXIT_FAILURE;
         }
-      } else {
-        fprintf(stderr, "Error: -c option requires an argument.\n");
-        return EXIT_FAILURE;
       }
       break;
     default:
@@ -138,8 +126,8 @@ int main(int argc, char *argv[]) {
   }
 
   if (count > 1) {
-    printf("[Average] real: %.3fs, user: %.3fs, sys: %.3fs\n", total_real / count,
-           total_user / count, total_sys / count);
+    printf("[Average] real: %.3fs, user: %.3fs, sys: %.3fs\n",
+           total_real / count, total_user / count, total_sys / count);
   }
 
   return EXIT_SUCCESS;
