@@ -46,7 +46,7 @@ int main(int argc, char *argv[]) {
     }
   }
 
-  struct utmpx *u = getutxent();
+  struct utmpx *u;
   while ((u = getutxent()) != NULL) {
     if (u->ut_type != USER_PROCESS) {
       u = getutxent();

@@ -82,7 +82,7 @@ int run_command(char **argv, const int verbose, double *real_time,
 int main(int argc, char **argv) {
   int opt, verbose = 0, count = 1;
 
-  while ((opt = getopt(argc, argv, "vc:")) != -1) {
+  while ((opt = getopt(argc, argv, "+vc:")) != -1) {
     switch (opt) {
     case 'v':
       verbose = 1;
